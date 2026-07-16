@@ -1,57 +1,92 @@
 # Daria Hormoz (MT6897) - Device Tree Handoff
 
-## منبع
-پورت‌شده از `device_xiaomi_duchamp` (mt6897-devs)، با تمام مقادیر و blob ها
-از OTA رسمی گوشی استخراج شده:
+## Source
+Ported from `device_xiaomi_duchamp` (mt6897-devs org), with all values and
+proprietary blobs extracted directly from the device's official OTA:
 `DariaOS-6.0-20251031-RELEASE-hormoz-V6.7.2.1.BOND2-user-signed.zip`
 
-## اطلاعات دستگاه (تأییدشده از OTA)
+## Device Info (confirmed from OTA)
 - Brand: Daria | Device: hormoz | Model: DM-B70104
 - SoC: MT6897 (Dimensity 8350)
 - Fingerprint: Daria/hormoz/hormoz:15/AP3A.241105.008/V6.7.2.1.BOND2:user/release-keys
 - Android 15, Security patch: 2025-09-05
-- Super partition size: 9661579264 bytes (از payload.bin استخراج شده)
+- Super partition size: 9661579264 bytes (extracted from payload.bin manifest)
 - Dynamic partition group: mtk_dynamic_partitions
 
-## سخت‌افزار شناسایی‌شده
-- فینگرپرینت زیر صفحه: Goodix GW9598 (brl-d family)
-- NFC: چیپ سامسونگ (sec-nfc)، نه NXP
-- GPU: Mali با درایور مدیاتک r44
-- صدا: aw882xx / rt5512 / tfa98xx (کدوم دقیقاً فعاله، نیاز به تست روی دستگاه)
-- WiFi/BT: مدیاتک نسل ۴ (gen4m)
+## Identified Hardware
+- Under-display fingerprint: Goodix GW9598 (brl-d family)
+- NFC: Samsung chip (sec-nfc driver), not NXP
+- GPU: Mali with MediaTek r44 driver
+- Audio amp: aw882xx / rt5512 / tfa98xx present in blobs (exact active one needs on-device verification)
+- WiFi/BT: MediaTek gen4m (4th-gen MTK connectivity stack)
 
-## ریپوی کرنل (device_daria_hormoz-kernel)
-**این کرنل prebuilt است، نه کامپایل‌شده از سورس.**
-شامل:
-- `Image.lz4` — مستقیم از boot.img خودِ گوشی
-- `dtb/mt6897.dtb` — device tree واقعی دستگاه (از vendor_boot.img استخراج و
-  round-trip validate شده با mkbootimg/unpack_bootimg)
-- `modules/` — ۴۴۶ ماژول کرنل واقعی (از vendor_boot ramdisk +
+## Camera Sensors (identified from vendor.img strings)
+- ov50e40_mipi_raw - main camera (OmniVision OV50E40, ~50MP)
+- ov08d10wide_mipi_raw - ultra-wide camera (OV08D10)
+- s5kjn1sub_mipi_raw - sub/zoom camera (Samsung ISOCELL JN1)
+- s5k3m5sxo_mipi_raw - likely selfie camera (Samsung S5K3M5SX, "o" variant)
+- ov08c10_mipi_raw - additional candidate sensor (exact role unclear)
+- mtk000_mipi_raw - generic/placeholder driver (runtime auto-detection)
+
+Note: tuning/IdxMgr blobs for these sensors are generic (no device-name
+prefix, e.g. ov50e40_mipi_raw_tuning.so rather than
+hormozov50e40_mipi_raw_tuning.so), unlike duchamp which prefixed
+everything with duchamp.
+
+Driver source (.c/.h files under mtkcam/imgsensor/src-v4l2/common/)
+for these sensors is not present in the duchamp kernel_device_modules
+repo (duchamp didn't use them) - only s5k3m5sx_mipi_raw exists there
+generically. To get working camera drivers, source needs to be pulled
+from another device's kernel_device_modules repo that uses the same
+sensors (the sensor driver itself is largely device-independent; only
+the tuning parameters are device-specific). MiCode/MTK_kernel_modules
+publishes per-device branches for Xiaomi devices, but Daria is not
+Xiaomi, so an exact branch match is unlikely - search for other public
+repos containing ov50e40_mipi_raw / s5kjn1sub_mipi_raw instead.
+
+Target CONFIG_CUSTOM_KERNEL_IMGSENSOR for hormoz once driver source is found:
+CONFIG_CUSTOM_KERNEL_IMGSENSOR="ov50e40_mipi_raw ov08d10wide_mipi_raw s5kjn1sub_mipi_raw s5k3m5sxo_mipi_raw"
+
+## Kernel Repo (device_daria_hormoz-kernel)
+This kernel is prebuilt, not compiled from source.
+Contents:
+- Image.lz4 - taken directly from the device's own boot.img
+- dtb/mt6897.dtb - the device's real device tree (extracted from
+  vendor_boot.img, round-trip validated with mkbootimg/unpack_bootimg)
+- modules/ - 446 real kernel modules (from vendor_boot ramdisk +
   vendor_dlkm.img + system_dlkm.img)
-- `modules/*.modules.load*` — لیست‌های لود دستی ساخته‌شده بر اساس
-  محل واقعی هر ماژول
+- modules/*.modules.load* - manually built load-order lists based on
+  each module's actual location
 
-⚠️ این کرنل از سورس کامپایل نشده. اگر نیاز به تغییر کرنل (پچ، دیباگ،
-فیچر جدید) باشه، باید سورس واقعی از `android_kernel_6.1` (GKI مشترک) +
-`android_vendor_mediatek_kernel_modules` (drivers) با DTS این پروژه
-کامپایل بشه؛ این کار در این مرحله انجام نشده.
+Warning: this kernel was not compiled from source. If any kernel change is
+needed (patches, debugging, new features), the real source needs to be
+built from android_kernel_6.1 (shared GKI) + android_vendor_mediatek_kernel_modules
+(drivers) using this project's DTS. That work has not been done yet.
 
-## محدودیت‌های شناخته‌شده / کارهای باقی‌مانده
-1. **power/power-mode.cpp**: توابع `DOUBLE_TAP_TO_WAKE` و `DISPLAY_INACTIVE`
-   موقتاً stub شدن (غیرفعال) چون مسیر device node واقعی تاچ‌پنل hormoz
-   (معادل `/dev/xiaomi-touch` در duchamp) هنوز شناسایی نشده. نیاز به بررسی
-   روی دستگاه واقعی.
-2. **udfps/UdfpsHandler.cpp**: نسخه‌ی ساده‌شده (stub) جایگزین شده. فینگرپرینت
-   پایه کار می‌کنه ولی بدون بوست روشنایی هنگام لمس. نیاز به پیاده‌سازی
-   کامل بر اساس رفتار واقعی Goodix GW9598 روی این دستگاه.
-3. **دوربین**: چند سنسور کاندید در بلاب‌ها پیدا شد (OV64B40, OV08D10Ultra,
-   OV16A1QFront, SC202PCSMacro از duchamp حذف شدن؛ سنسورهای واقعی hormoz
-   باید در پارتیشن‌های vendor بررسی بشه — این تسک انجام نشده).
-4. **تست عملی build**: این پروژه در یک AOSP source tree کامل تست نشده.
-   اولین build احتمالاً به رفع چند اشکال کوچک نیاز داره.
+## Known Limitations / Remaining Work
+1. power/power-mode.cpp: DOUBLE_TAP_TO_WAKE and DISPLAY_INACTIVE
+   are currently stubbed out (disabled) because the real touch device
+   node for hormoz (the equivalent of duchamp's /dev/xiaomi-touch) has
+   not been identified. Needs verification on real hardware.
+2. udfps/UdfpsHandler.cpp: replaced with a simplified stub. Basic
+   fingerprint unlock works, but there is no brightness boost on touch.
+   Needs a full implementation based on the real behavior of the
+   Goodix GW9598 on this device.
+3. Camera sensors: see the Camera Sensors section above - driver
+   source for the real sensors (OV50E40, OV08D10Wide, S5KJN1Sub,
+   S5K3M5SXo) still needs to be sourced from another device's
+   kernel_device_modules repo and wired into the kernel config.
+4. Real build test: this project has not been tested in a full
+   AOSP source tree. The first build will likely need a few small
+   fixes.
 
-## ساختار ریپوها برای build
+## Repo Layout for Building
 device/daria/hormoz          <- device_daria_hormoz
 device/daria/hormoz-kernel   <- device_daria_hormoz-kernel
-vendor/daria/hormoz          <- باید با اجرای extract-files.py روی OTA ساخته بشه
-                                 (proprietary-files.txt/extract-files.py آماده و تست‌شده است)
+vendor/daria/hormoz          <- must be generated by running extract-files.py
+                                 against the OTA (proprietary-files.txt and
+                                 extract-files.py are ready and tested)
+
+## Repositories
+- https://github.com/ishantia/device_daria_hormoz
+- https://github.com/ishantia/device_daria_hormoz-kernel
