@@ -1,4 +1,4 @@
-# Daria Hormoz (MT6897) - Device Tree Handoff
+# Daria Bond II (MT6897) - Device Tree Handoff
 
 ## Source
 Ported from `device_xiaomi_duchamp` (mt6897-devs org), with all values and
